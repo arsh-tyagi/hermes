@@ -1,169 +1,76 @@
+# ============================================================
+# Hermes Agent - Render Free
+# Telegram + Google Gemini
+#
+# IMPORTANT:
+# - Keep Hermes' official /init entrypoint.
+# - Do NOT create /opt/data/.env manually.
+# - Secrets come directly from Render environment variables.
+# - A tiny HTTP server runs under s6 alongside Hermes.
+# ============================================================
+
 FROM nousresearch/hermes-agent:latest
+
+USER root
 
 ENV HERMES_HOME=/opt/data
 ENV PORT=10000
 ENV PYTHONUNBUFFERED=1
 
-RUN mkdir -p /opt/data
+# ------------------------------------------------------------
+# Add a tiny Render health/port service to Hermes' existing
+# s6 supervision tree.
+# ------------------------------------------------------------
 
-RUN cat > /opt/hermes/render-entrypoint.sh <<'EOF'
-#!/bin/sh
+RUN mkdir -p /etc/s6-overlay/s6-rc.d/render-http/dependencies.d \
+             /etc/s6-overlay/s6-rc.d/user/contents.d
+
+# Mark service as a long-running supervised service.
+RUN printf 'longrun\n' \
+    > /etc/s6-overlay/s6-rc.d/render-http/type
+
+# Make it wait for Hermes' base/user services.
+RUN touch /etc/s6-overlay/s6-rc.d/render-http/dependencies.d/base
+
+# Add service to the user bundle.
+RUN touch /etc/s6-overlay/s6-rc.d/user/contents.d/render-http
+
+# ------------------------------------------------------------
+# Render HTTP service
+# ------------------------------------------------------------
+
+RUN cat > /etc/s6-overlay/s6-rc.d/render-http/run <<'EOF'
+#!/command/with-contenv sh
 set -eu
 
-echo "=============================================="
-echo " Hermes Agent - Render"
-echo "=============================================="
+PORT="${PORT:-10000}"
 
-export HERMES_HOME=/opt/data
+echo "[render-http] Starting HTTP server on 0.0.0.0:${PORT}"
 
-mkdir -p "$HERMES_HOME"
-mkdir -p "$HERMES_HOME/logs"
-mkdir -p "$HERMES_HOME/sessions"
-mkdir -p "$HERMES_HOME/memories"
-mkdir -p "$HERMES_HOME/skills"
-
-# ------------------------------------------------
-# Validate required environment variables
-# ------------------------------------------------
-
-if [ -z "${GEMINI_API_KEY:-}" ]; then
-    echo "[ERROR] GEMINI_API_KEY is missing."
-    exit 1
-fi
-
-if [ -z "${TELEGRAM_BOT_TOKEN:-}" ]; then
-    echo "[ERROR] TELEGRAM_BOT_TOKEN is missing."
-    exit 1
-fi
-
-# ------------------------------------------------
-# Write Hermes secrets
-# ------------------------------------------------
-
-cat > "$HERMES_HOME/.env" <<ENVFILE
-GEMINI_API_KEY=${GEMINI_API_KEY}
-TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-ENVFILE
-
-chmod 600 "$HERMES_HOME/.env"
-
-# ------------------------------------------------
-# Write Hermes configuration
-# ------------------------------------------------
-
-cat > "$HERMES_HOME/config.yaml" <<'YAML'
-model:
-  provider: gemini
-  default: gemini-2.5-flash
-  base_url: https://generativelanguage.googleapis.com/v1beta
-
-agent:
-  max_turns: 30
-
-fallback_providers:
-  - provider: openrouter
-    model: google/gemini-2.5-flash
-
-YAML
-
-echo "[OK] Hermes configuration:"
-echo "     HERMES_HOME : $HERMES_HOME"
-echo "     Provider    : gemini"
-echo "     Model       : gemini-2.5-flash"
-echo "     Base URL    : native Gemini API"
-
-# ------------------------------------------------
-# Telegram allowlist
-# ------------------------------------------------
-
-if [ -n "${TELEGRAM_ALLOWED_USERS:-}" ]; then
-    echo "[OK] Telegram allowlist configured."
-else
-    echo "[WARNING] TELEGRAM_ALLOWED_USERS is empty."
-fi
-
-# ------------------------------------------------
-# Optional OpenRouter fallback
-# ------------------------------------------------
-
-if [ -n "${OPENROUTER_API_KEY:-}" ]; then
-
-    cat >> "$HERMES_HOME/.env" <<ENVFILE
-OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-ENVFILE
-
-    echo "[OK] OpenRouter fallback credentials configured."
-
-else
-
-    echo "[WARNING] OPENROUTER_API_KEY not configured."
-    echo "[WARNING] Gemini will be the only model provider."
-
-fi
-
-# ------------------------------------------------
-# Render HTTP server
-# ------------------------------------------------
-
-echo "[OK] Starting Render HTTP server on port ${PORT}"
-
-python -m http.server \
+exec s6-setuidgid hermes \
+    python -m http.server \
     "${PORT}" \
     --bind 0.0.0.0 \
-    --directory /tmp \
-    >/tmp/render-http.log 2>&1 &
-
-HTTP_PID=$!
-
-# ------------------------------------------------
-# Cleanup
-# ------------------------------------------------
-
-cleanup() {
-
-    echo "[INFO] Shutting down Hermes..."
-
-    if [ -n "${HERMES_PID:-}" ]; then
-        kill "${HERMES_PID}" 2>/dev/null || true
-    fi
-
-    if [ -n "${HTTP_PID:-}" ]; then
-        kill "${HTTP_PID}" 2>/dev/null || true
-    fi
-
-}
-
-trap cleanup INT TERM EXIT
-
-# ------------------------------------------------
-# Start Hermes
-# ------------------------------------------------
-
-echo "[OK] Starting Hermes Gateway..."
-
-cd /opt/data
-
-hermes gateway run &
-HERMES_PID=$!
-
-echo "[OK] Hermes PID: $HERMES_PID"
-echo "[OK] HTTP PID:   $HTTP_PID"
-
-# ------------------------------------------------
-# Keep container alive while Hermes is alive
-# ------------------------------------------------
-
-wait "$HERMES_PID"
-
-EXIT_CODE=$?
-
-echo "[ERROR] Hermes stopped with exit code $EXIT_CODE"
-
-exit "$EXIT_CODE"
+    --directory /tmp
 EOF
 
-RUN chmod +x /opt/hermes/render-entrypoint.sh
+RUN chmod +x /etc/s6-overlay/s6-rc.d/render-http/run
+
+# ------------------------------------------------------------
+# Use the official Hermes entrypoint.
+#
+# This is CRITICAL:
+# /init runs Hermes' stage2 bootstrap, fixes /opt/data
+# permissions, loads environment variables and starts the
+# correct runtime user.
+# ------------------------------------------------------------
+
+ENTRYPOINT ["/init", "/opt/hermes/docker/main-wrapper.sh"]
+
+# ------------------------------------------------------------
+# Run the gateway as the main command.
+# ------------------------------------------------------------
+
+CMD ["gateway", "run"]
 
 EXPOSE 10000
-
-ENTRYPOINT ["/opt/hermes/render-entrypoint.sh"]
