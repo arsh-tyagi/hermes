@@ -1,5 +1,5 @@
 # Pull the official Hermes Agent image
-FROM ghcr.io/nousresearch/hermes-agent:latest
+FROM nousresearch/hermes-agent:latest
 
 # Create a dual-startup script
 RUN echo '#!/bin/bash' > /start.sh && \
