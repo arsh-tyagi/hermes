@@ -1,87 +1,50 @@
 FROM nousresearch/hermes-agent:latest
 
-ENV HERMES_HOME=/opt/data
+USER root
+
+ENV HERMES_HOME=/opt/hermes_home
 ENV PORT=10000
 ENV PYTHONUNBUFFERED=1
 ENV HERMES_DASHBOARD=0
 
-USER root
+RUN mkdir -p /opt/hermes_home /etc/s6-overlay/s6-rc.d/render-http/dependencies.d /etc/s6-overlay/s6-rc.d/user/contents.d /etc/cont-init.d
 
-RUN mkdir -p \
-    /etc/s6-overlay/s6-rc.d/render-http/dependencies.d \
-    /etc/s6-overlay/s6-rc.d/user/contents.d
+COPY SOUL.md /opt/hermes_home/SOUL.md
 
-RUN printf 'longrun\n' \
-    > /etc/s6-overlay/s6-rc.d/render-http/type
+RUN chown -R hermes:hermes /opt/hermes_home && chmod 755 /opt/hermes_home && chmod 644 /opt/hermes_home/SOUL.md
 
-RUN touch \
-    /etc/s6-overlay/s6-rc.d/render-http/dependencies.d/base \
-    /etc/s6-overlay/s6-rc.d/user/contents.d/render-http
-
-RUN cat > /etc/s6-overlay/s6-rc.d/render-http/run <<'EOF'
+RUN cat > /etc/cont-init.d/10-render-hermes-config <<'EOF'
 #!/command/with-contenv sh
 set -eu
-
-PORT="${PORT:-10000}"
-
-exec s6-setuidgid hermes \
-    python -m http.server \
-    "$PORT" \
-    --bind 0.0.0.0 \
-    --directory /tmp
-EOF
-
-RUN chmod +x /etc/s6-overlay/s6-rc.d/render-http/run
-
-# ------------------------------------------------------------
-# Generate only NON-SECRET Hermes configuration.
-# Secrets remain in Render's environment.
-# ------------------------------------------------------------
-RUN cat > /opt/hermes/render-config.sh <<'EOF'
-#!/command/with-contenv sh
-set -eu
-
+HERMES_HOME="${HERMES_HOME:-/opt/hermes_home}"
 mkdir -p "$HERMES_HOME"
-
 cat > "$HERMES_HOME/config.yaml" <<'YAML'
 model:
   provider: openrouter
   default: openrouter/free
-
-# Keep the main agent lightweight on Render Free.
+compression:
+  enabled: true
+  threshold: 0.50
+  target_ratio: 0.20
+  protect_last_n: 12
+  min_tail_user_messages: 1
 agent:
-  max_turns: 15
-
-# Do not spend extra calls on optional auxiliary services.
-auxiliary:
-  compression:
-    provider: main
-    model: ""
-
-# If the OpenRouter free router temporarily fails,
-# Hermes can try another configured provider later.
-fallback_providers: []
+  max_turns: 12
 YAML
-
 chown -R hermes:hermes "$HERMES_HOME"
-chmod 755 "$HERMES_HOME"
-
-echo "[render-config] OpenRouter Free Router configured."
 EOF
+RUN chmod +x /etc/cont-init.d/10-render-hermes-config
 
-RUN chmod +x /opt/hermes/render-config.sh
+RUN printf 'longrun\n' > /etc/s6-overlay/s6-rc.d/render-http/type
+RUN touch /etc/s6-overlay/s6-rc.d/render-http/dependencies.d/base /etc/s6-overlay/s6-rc.d/user/contents.d/render-http
 
-# ------------------------------------------------------------
-# IMPORTANT:
-# Run configuration immediately before Hermes starts.
-# The actual /init remains Hermes' PID 1.
-# ------------------------------------------------------------
-RUN sed -i \
-    '/^exec "\/opt\/hermes\/docker\/main-wrapper.sh"/i /opt/hermes/render-config.sh' \
-    /opt/hermes/docker/main-wrapper.sh
+RUN cat > /etc/s6-overlay/s6-rc.d/render-http/run <<'EOF'
+#!/command/with-contenv sh
+set -eu
+exec s6-setuidgid hermes python -m http.server "${PORT:-10000}" --bind 0.0.0.0 --directory /tmp
+EOF
+RUN chmod +x /etc/s6-overlay/s6-rc.d/render-http/run
 
 EXPOSE 10000
-
 ENTRYPOINT ["/init", "/opt/hermes/docker/main-wrapper.sh"]
-
 CMD ["gateway", "run"]
