@@ -7,11 +7,18 @@ ENV PORT=10000
 ENV PYTHONUNBUFFERED=1
 ENV HERMES_DASHBOARD=0
 
-RUN mkdir -p /opt/hermes_home /etc/s6-overlay/s6-rc.d/render-http/dependencies.d /etc/s6-overlay/s6-rc.d/user/contents.d /etc/cont-init.d
+# NEW: Install aiohttp for the prediction bot
+RUN pip install aiohttp
+
+# Modified to include wingo-bot directories
+RUN mkdir -p /opt/hermes_home /etc/s6-overlay/s6-rc.d/render-http/dependencies.d /etc/s6-overlay/s6-rc.d/user/contents.d /etc/cont-init.d /etc/s6-overlay/s6-rc.d/wingo-bot/dependencies.d
 
 COPY SOUL.md /opt/hermes_home/SOUL.md
+# NEW: Copy the bot script
+COPY bot.py /opt/hermes_home/bot.py
 
-RUN chown -R hermes:hermes /opt/hermes_home && chmod 755 /opt/hermes_home && chmod 644 /opt/hermes_home/SOUL.md
+# Modified to give permissions to bot.py
+RUN chown -R hermes:hermes /opt/hermes_home && chmod 755 /opt/hermes_home && chmod 644 /opt/hermes_home/SOUL.md && chmod 755 /opt/hermes_home/bot.py
 
 RUN cat > /etc/cont-init.d/10-render-hermes-config <<'EOF'
 #!/command/with-contenv sh
@@ -35,6 +42,7 @@ chown -R hermes:hermes "$HERMES_HOME"
 EOF
 RUN chmod +x /etc/cont-init.d/10-render-hermes-config
 
+# Original Hermes Web Service
 RUN printf 'longrun\n' > /etc/s6-overlay/s6-rc.d/render-http/type
 RUN touch /etc/s6-overlay/s6-rc.d/render-http/dependencies.d/base /etc/s6-overlay/s6-rc.d/user/contents.d/render-http
 
@@ -44,6 +52,17 @@ set -eu
 exec s6-setuidgid hermes python -m http.server "${PORT:-10000}" --bind 0.0.0.0 --directory /tmp
 EOF
 RUN chmod +x /etc/s6-overlay/s6-rc.d/render-http/run
+
+# NEW: Wingo Bot Background Service (Ye Hermes ko disturb nahi karega)
+RUN printf 'longrun\n' > /etc/s6-overlay/s6-rc.d/wingo-bot/type
+RUN touch /etc/s6-overlay/s6-rc.d/wingo-bot/dependencies.d/base /etc/s6-overlay/s6-rc.d/user/contents.d/wingo-bot
+
+RUN cat > /etc/s6-overlay/s6-rc.d/wingo-bot/run <<'EOF'
+#!/command/with-contenv sh
+set -eu
+exec s6-setuidgid hermes python /opt/hermes_home/bot.py
+EOF
+RUN chmod +x /etc/s6-overlay/s6-rc.d/wingo-bot/run
 
 EXPOSE 10000
 ENTRYPOINT ["/init", "/opt/hermes/docker/main-wrapper.sh"]
