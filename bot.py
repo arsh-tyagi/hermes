@@ -2,22 +2,18 @@ import asyncio
 import urllib.request
 import json
 import time
-import os
 
-# Telegram details Render environment se aayengi
-TELEGRAM_BOT_TOKEN = os.environ.get("PREDICTION_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("MY_CHAT_ID")
+# --- YAHAN APNI DETAILS DALO ---
+TELEGRAM_BOT_TOKEN = "8854368270:AAFYyq_mHrI_HYSkIduwuELvAQ1Zn_99K3w" 
+TELEGRAM_CHAT_ID = "8330160168"
+# --------------------------------------
 
 HEADERS = {
     'Accept': 'application/json, text/plain, */*',
     'Accept-Language': 'en-US,en;q=0.9',
     'Connection': 'keep-alive',
     'Origin': 'https://ayhbaw55.com',
-    'Priority': 'u=1, i',
     'Referer': 'https://ayhbaw55.com/',
-    'Sec-CH-UA': '"Not=A?Brand";v="99", "Google Chrome";v="151", "Chromium";v="151"',
-    'Sec-CH-UA-Mobile': '?0',
-    'Sec-CH-UA-Platform': '"Windows"',
     'Sec-Fetch-Dest': 'empty',
     'Sec-Fetch-Mode': 'cors',
     'Sec-Fetch-Site': 'cross-site',
@@ -32,20 +28,17 @@ GAME_MODES = {
 }
 
 def send_telegram_message_sync(message):
-    """Telegram par message bhejne ka built-in function"""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("❌ Telegram Error: Token ya Chat ID missing hai!")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}).encode('utf-8')
     req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json'})
     try:
         urllib.request.urlopen(req, timeout=5)
-    except Exception as e:
-        print(f"❌ Telegram Send Error: {e}")
+    except Exception:
+        pass
 
 def fetch_game_history_sync(game_code):
-    """Server se data lane ka built-in function"""
     current_ts = int(time.time() * 1000)
     url = f'https://draw.ar-lottery01.com/WinGo/{game_code}/GetHistoryIssuePage.json?ts={current_ts}'
     req = urllib.request.Request(url, headers=HEADERS)
@@ -55,8 +48,7 @@ def fetch_game_history_sync(game_code):
                 data = json.loads(response.read().decode())
                 return data.get('data', {}).get('list', [])
     except Exception as e:
-        # AB HUME LOGS ME EXACT ERROR DIKHEGA
-        print(f"⚠️ [{game_code}] API Error: {e}")
+        print(f"⚠️ [{game_code}] Fetch Error: {e}")
     return None
 
 def predict_next_period(history_list, game_name):
@@ -65,9 +57,18 @@ def predict_next_period(history_list, game_name):
         
     latest_result = history_list[0]
     last_issue = latest_result.get('issueNumber')
+    last_number = latest_result.get('number')
+    
+    # Agle period ka number calculate karna taaki user ko clear rahe
+    try:
+        next_issue = str(int(last_issue) + 1)
+    except:
+        next_issue = "Next"
     
     recent_sizes = ["Big" if int(item['number']) > 4 else "Small" for item in history_list[:3]]
+    last_size = recent_sizes[0]
     
+    # Tumhara Logic
     if recent_sizes.count("Small") >= 2:
         prediction = "Big 🟩"
     elif recent_sizes.count("Big") >= 2:
@@ -77,8 +78,10 @@ def predict_next_period(history_list, game_name):
 
     message = (
         f"🎮 **{game_name} Game**\n"
-        f"✅ Period: `{last_issue}` Completed\n"
-        f"🔮 Next Prediction: **{prediction}**"
+        f"✅ Past Period `{last_issue}` Result: **{last_number} ({last_size})**\n"
+        f"➖➖➖➖➖➖➖➖\n"
+        f"⏳ Place Bet For: `{next_issue}`\n"
+        f"🔮 Prediction: **{prediction}**"
     )
     return message, last_issue
 
@@ -86,25 +89,29 @@ async def monitor_single_game(game_name, game_code, polling_interval):
     last_processed_period = None
     while True:
         history_data = await asyncio.to_thread(fetch_game_history_sync, game_code)
-        
         if history_data:
             latest_period = history_data[0].get('issueNumber')
             if latest_period != last_processed_period:
-                prediction_msg, current_issue = predict_next_period(history_data, game_name)
-                if prediction_msg:
-                    print(f"✅ [{game_name}] Prediction generated for {latest_period}")
-                    await asyncio.to_thread(send_telegram_message_sync, prediction_msg)
-                last_processed_period = latest_period
+                # Jab pehli baar script chalegi, toh purane data ka spam na aaye isliye ye check
+                if last_processed_period is not None:
+                    prediction_msg, current_issue = predict_next_period(history_data, game_name)
+                    if prediction_msg:
+                        print(f"⚡ [{game_name}] Fast prediction sent for {current_issue}!")
+                        await asyncio.to_thread(send_telegram_message_sync, prediction_msg)
                 
+                last_processed_period = latest_period
+        
+        # Fast polling interval se bot turant detect karega
         await asyncio.sleep(polling_interval)
 
 async def hermes_main_engine():
-    print("🚀 Background Prediction Bot Started (DEBUG MODE ON)!")
+    print("🚀 Ultra-Fast Local Prediction Bot Started!")
     tasks = [
-        monitor_single_game("30 Sec", GAME_MODES["30 Sec"], 10),
-        monitor_single_game("1 Min", GAME_MODES["1 Min"], 15),
-        monitor_single_game("3 Min", GAME_MODES["3 Min"], 30),
-        monitor_single_game("5 Min", GAME_MODES["5 Min"], 45)
+        # Ab wait time bohot kam kar diya hai
+        monitor_single_game("30 Sec", GAME_MODES["30 Sec"], 2),  # Har 2 second me check
+        monitor_single_game("1 Min", GAME_MODES["1 Min"], 3),    # Har 3 second me check
+        monitor_single_game("3 Min", GAME_MODES["3 Min"], 5),    # Har 5 second me check
+        monitor_single_game("5 Min", GAME_MODES["5 Min"], 10)    # Har 10 second me check
     ]
     await asyncio.gather(*tasks)
 
