@@ -29,14 +29,15 @@ GAME_MODES = {
 def send_telegram_message_sync(message):
     """Telegram par message bhejne ka built-in function"""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("❌ Telegram Error: Token ya Chat ID missing hai!")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}).encode('utf-8')
     req = urllib.request.Request(url, data=payload, headers={'Content-Type': 'application/json'})
     try:
         urllib.request.urlopen(req, timeout=5)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"❌ Telegram Send Error: {e}")
 
 def fetch_game_history_sync(game_code):
     """Server se data lane ka built-in function"""
@@ -48,8 +49,9 @@ def fetch_game_history_sync(game_code):
             if response.status == 200:
                 data = json.loads(response.read().decode())
                 return data.get('data', {}).get('list', [])
-    except Exception:
-        pass
+    except Exception as e:
+        # AB HUME LOGS ME EXACT ERROR DIKHEGA
+        print(f"⚠️ [{game_code}] API Error: {e}")
     return None
 
 def predict_next_period(history_list, game_name):
@@ -78,7 +80,6 @@ def predict_next_period(history_list, game_name):
 async def monitor_single_game(game_name, game_code, polling_interval):
     last_processed_period = None
     while True:
-        # asyncio.to_thread use kiya taaki background me smoothly chale
         history_data = await asyncio.to_thread(fetch_game_history_sync, game_code)
         
         if history_data:
@@ -86,14 +87,14 @@ async def monitor_single_game(game_name, game_code, polling_interval):
             if latest_period != last_processed_period:
                 prediction_msg, current_issue = predict_next_period(history_data, game_name)
                 if prediction_msg:
-                    print(f"[{game_name}] Prediction sent for {latest_period}")
+                    print(f"✅ [{game_name}] Prediction generated for {latest_period}")
                     await asyncio.to_thread(send_telegram_message_sync, prediction_msg)
                 last_processed_period = latest_period
                 
         await asyncio.sleep(polling_interval)
 
 async def hermes_main_engine():
-    print("🚀 Background Prediction Bot Started (No external dependencies)!")
+    print("🚀 Background Prediction Bot Started (DEBUG MODE ON)!")
     tasks = [
         monitor_single_game("30 Sec", GAME_MODES["30 Sec"], 10),
         monitor_single_game("1 Min", GAME_MODES["1 Min"], 15),
