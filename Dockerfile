@@ -7,17 +7,14 @@ ENV PORT=10000
 ENV PYTHONUNBUFFERED=1
 ENV HERMES_DASHBOARD=0
 
-# NEW: Install aiohttp for the prediction bot
-RUN pip install aiohttp
-
 # Modified to include wingo-bot directories
 RUN mkdir -p /opt/hermes_home /etc/s6-overlay/s6-rc.d/render-http/dependencies.d /etc/s6-overlay/s6-rc.d/user/contents.d /etc/cont-init.d /etc/s6-overlay/s6-rc.d/wingo-bot/dependencies.d
 
 COPY SOUL.md /opt/hermes_home/SOUL.md
-# NEW: Copy the bot script
+# Copy the bot script
 COPY bot.py /opt/hermes_home/bot.py
 
-# Modified to give permissions to bot.py
+# Give permissions to bot.py
 RUN chown -R hermes:hermes /opt/hermes_home && chmod 755 /opt/hermes_home && chmod 644 /opt/hermes_home/SOUL.md && chmod 755 /opt/hermes_home/bot.py
 
 RUN cat > /etc/cont-init.d/10-render-hermes-config <<'EOF'
@@ -53,7 +50,7 @@ exec s6-setuidgid hermes python -m http.server "${PORT:-10000}" --bind 0.0.0.0 -
 EOF
 RUN chmod +x /etc/s6-overlay/s6-rc.d/render-http/run
 
-# NEW: Wingo Bot Background Service (Ye Hermes ko disturb nahi karega)
+# Wingo Bot Background Service (No external dependencies needed)
 RUN printf 'longrun\n' > /etc/s6-overlay/s6-rc.d/wingo-bot/type
 RUN touch /etc/s6-overlay/s6-rc.d/wingo-bot/dependencies.d/base /etc/s6-overlay/s6-rc.d/user/contents.d/wingo-bot
 
