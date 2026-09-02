@@ -9,14 +9,19 @@ TELEGRAM_BOT_TOKEN = os.environ.get("PREDICTION_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("MY_CHAT_ID")
 
 HEADERS = {
-    'accept': 'application/json, text/plain, */*',
-    'accept-language': 'en-US,en;q=0.9',
-    'origin': 'https://ayhbaw55.com',
-    'referer': 'https://ayhbaw55.com/',
-    'sec-ch-ua': '"Not=A?Brand";v="99", "Google Chrome";v="151", "Chromium";v="151"',
-    'sec-ch-ua-mobile': '?0',
-    'sec-ch-ua-platform': '"Windows"',
-    'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36'
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Connection': 'keep-alive',
+    'Origin': 'https://ayhbaw55.com',
+    'Priority': 'u=1, i',
+    'Referer': 'https://ayhbaw55.com/',
+    'Sec-CH-UA': '"Not=A?Brand";v="99", "Google Chrome";v="151", "Chromium";v="151"',
+    'Sec-CH-UA-Mobile': '?0',
+    'Sec-CH-UA-Platform': '"Windows"',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'cross-site',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/151.0.0.0 Safari/537.36'
 }
 
 GAME_MODES = {
